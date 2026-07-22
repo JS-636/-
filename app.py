@@ -6,13 +6,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 1. 구글 시트 연동 설정
 def get_google_sheet():
    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
+   creds_dict = dict(st.secrets["gcp_service_account"])
+   creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+   client = gspread.authorize(creds)
     
-    sheet_url = st.secrets["spreadsheet"]
-    sheet = client.open_by_key(sheet_url).worksheet("시트1")
-    return sheet
+   sheet_url = st.secrets["spreadsheet"]
+   sheet = client.open_by_key(sheet_url).worksheet("시트1")
+   return sheet
 
 # 2. 직원 정보 설정 (이름: 숫자 4자리 비밀번호)
 USER_DB = {
