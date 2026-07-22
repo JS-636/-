@@ -11,7 +11,7 @@ def get_google_sheet():
     client = gspread.authorize(creds)
     
     sheet_url = st.secrets["spreadsheet"]
-    sheet = client.open_by_url(sheet_url).sheet1
+    sheet = client.open_by_url(sheet_url).시트1
     return sheet
 
 # 2. 직원 정보 설정 (이름: 숫자 4자리 비밀번호)
