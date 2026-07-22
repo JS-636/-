@@ -1,67 +1,90 @@
 import streamlit as st
-import datetime
-import pandas as pd
-import os
+from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-# 1. 페이지 설정
-st.set_page_config(page_title="사무실 PC 전용 출퇴근 관리", page_icon="🏢", layout="centered")
+# 1. 구글 시트 연동 설정
+def get_google_sheet():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    
+    sheet_url = st.secrets["spreadsheet"]
+    sheet = client.open_by_url(sheet_url).sheet1
+    return sheet
 
-# 2. CSS 모바일 접속 차단
-st.markdown("""
-    <style>
-    @media (max-width: 768px) {
-        .main { display: none !important; }
-        body::before {
-            content: "❌ 본 시스템은 사무실 PC 웹 브라우저에서만 접속할 수 있습니다.";
-            display: flex; justify-content: center; align-items: center;
-            height: 100vh; font-size: 18px; font-weight: bold;
-            color: #d9534f; text-align: center; padding: 20px; background-color: #f8d7da;
-        }
-    }
-    </style>
-""", unsafe_allow_html=True)
+# 2. 직원 정보 설정 (이름: 숫자 4자리 비밀번호)
+USER_DB = {
+    "신순천": "7632",
+    "이은혜": "7633",
+    "김수현": "7635",
+    "이지성": "7636",
+    "박지영": "7641",
+    "최주희": "7643",
+    "박민경": "7644",
+    "김다솔": "7647",
+}
 
-st.title("🏢 팀 출퇴근 및 휴가 관리 시스템")
-st.caption("※ 본 시스템은 사무실 PC 환경에서만 정상 작동합니다.")
-st.divider()
+st.set_page_config(page_title="사무실 근태 관리 시스템", page_icon="⏰")
 
-# 3. 데이터 저장 설정
-DATA_FILE = "attendance_log.csv"
-if not os.path.exists(DATA_FILE):
-    df_init = pd.DataFrame(columns=["날짜", "이름", "구분", "기록시간", "비고"])
-    df_init.to_csv(DATA_FILE, index=False, encoding="utf-8-sig")
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "user_name" not in st.session_state:
+    st.session_state["user_name"] = None
 
-# 4. 팀원 명단 (팀원 이름에 맞게 수정하세요)
-TEAM_MEMBERS = ["신순천", "이은혜", "김수현", "이지성", "박지영","최주희","박민경","김다솔"]
+# --- 로그인 화면 ---
+if not st.session_state["logged_in"]:
+    st.title("🔒 근태 관리 시스템 - 로그인")
+    
+    with st.form("login_form"):
+        user_name = st.text_input("이름")
+        password = st.text_input("비밀번호 (숫자 4자리)", type="password", max_chars=4)
+        submit_button = st.form_submit_button("로그인")
+        
+        if submit_button:
+            # 이름 존재 여부 확인 및 비밀번호 일치 검증
+            if user_name in USER_DB and USER_DB[user_name] == password:
+                st.session_state["logged_in"] = True
+                st.session_state["user_name"] = user_name
+                st.success(f"{user_name}님 환영합니다!")
+                st.rerun()
+            else:
+                st.error("이름 또는 비밀번호(숫자 4자리)가 올바르지 않습니다.")
 
-with st.form("attendance_form", clear_on_submit=True):
+# --- 메인 출퇴근 화면 ---
+else:
+    user_name = st.session_state["user_name"]
+    
+    st.title("⏰ 사무실 출퇴근 관리")
+    st.write(f"접속자: **{user_name}** 님")
+    
+    if st.button("로그아웃"):
+        st.session_state["logged_in"] = False
+        st.session_state["user_name"] = None
+        st.rerun()
+
+    st.divider()
+
     col1, col2 = st.columns(2)
+    
     with col1:
-        member_name = st.selectbox("👤 팀원 이름", TEAM_MEMBERS)
+        if st.button("☀️ 출근하기", use_container_width=True):
+            try:
+                sheet = get_google_sheet()
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # 구글 시트에 기록: [이름, 구분, 시각]
+                sheet.append_row([user_name, "출근", now])
+                st.success(f"[{now}] {user_name}님 출근 등록 완료!")
+            except Exception as e:
+                st.error(f"구글 시트 저장 실패: {e}")
+
     with col2:
-        record_type = st.radio("📌 구분", ["출근", "퇴근", "휴가(연차)", "반차"], horizontal=True)
-    
-    note = st.text_input("💬 비고 (선택 사항)", placeholder="예: 오전 반차, 외근 등")
-    submit_btn = st.form_submit_button("제출하기", use_container_width=True)
-
-if submit_btn:
-    now = datetime.datetime.now()
-    current_date = now.strftime("%Y-%m-%d")
-    current_time = now.strftime("%H:%M:%S")
-    
-    new_record = pd.DataFrame([{
-        "날짜": current_date, "이름": member_name, "구분": record_type,
-        "기록시간": current_time, "비고": note
-    }])
-    
-    new_record.to_csv(DATA_FILE, mode='a', header=False, index=False, encoding="utf-8-sig")
-    st.success(f"✅ [{member_name}] 님의 {record_type} 기록이 완료되었습니다! ({current_time})")
-
-st.divider()
-
-st.subheader("📊 오늘의 출퇴근 기록 현황")
-if os.path.exists(DATA_FILE):
-    df_logs = pd.read_csv(DATA_FILE, encoding="utf-8-sig")
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    today_df = df_logs[df_logs["날짜"] == today_str]
-    st.dataframe(today_df, use_container_width=True)
+        if st.button("🌙 퇴근하기", use_container_width=True):
+            try:
+                sheet = get_google_sheet()
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                sheet.append_row([user_name, "퇴근", now])
+                st.info(f"[{now}] {user_name}님 퇴근 등록 완료!")
+            except Exception as e:
+                st.error(f"구글 시트 저장 실패: {e}")
